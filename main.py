@@ -25,22 +25,54 @@ def mac(pattern, filter_):
     return total
 
 
+def parse_row(line, size):
+    """공백으로 구분된 한 줄을 숫자 리스트로 바꾼다.
+
+    칸 수가 size와 다르거나 숫자가 아닌 값이 있으면 ValueError를 발생시킨다.
+    """
+    tokens = line.split()
+    if len(tokens) != size:
+        raise ValueError(f"숫자 {size}개가 필요합니다. (입력된 개수: {len(tokens)})")
+
+    row = []
+    for token in tokens:
+        try:
+            row.append(float(token))
+        except ValueError:
+            raise ValueError(f"'{token}'은(는) 숫자가 아닙니다.") from None
+    return row
+
+
+def input_matrix(name, size=3):
+    """size×size 행렬을 한 줄씩 입력받는다.
+
+    잘못 입력한 줄은 오류 이유를 보여 주고 그 줄만 다시 입력받는다.
+    """
+    print(f"\n[{name}] {size}×{size} 행렬을 한 줄에 {size}개씩, 공백으로 구분해 입력하세요.")
+    matrix = []
+    while len(matrix) < size:
+        line = input(f"  {len(matrix) + 1}행> ")
+        try:
+            matrix.append(parse_row(line, size))
+        except ValueError as error:
+            print(f"  입력 오류: {error} {len(matrix) + 1}행을 다시 입력하세요.")
+    return matrix
+
+
+def print_matrix(name, matrix):
+    """행렬을 보기 좋게 출력한다."""
+    print(f"[{name}]")
+    for row in matrix:
+        print("  " + " ".join(f"{value:g}" for value in row))
+
+
 if __name__ == "__main__":
-    # 2단계 확인용: 3×3 Cross 필터와 X 필터에 Cross 패턴을 넣어 본다.
-    cross_filter = [
-        [0, 1, 0],
-        [1, 1, 1],
-        [0, 1, 0],
-    ]
-    x_filter = [
-        [1, 0, 1],
-        [0, 1, 0],
-        [1, 0, 1],
-    ]
-    cross_pattern = [
-        [0, 1, 0],
-        [1, 1, 1],
-        [0, 1, 0],
-    ]
-    print("Cross 필터 점수:", mac(cross_pattern, cross_filter))
-    print("X 필터 점수    :", mac(cross_pattern, x_filter))
+    # 3단계 확인용: 필터 A, 필터 B, 패턴을 입력받아 그대로 출력해 본다.
+    filter_a = input_matrix("필터 A")
+    filter_b = input_matrix("필터 B")
+    pattern = input_matrix("패턴")
+
+    print("\n입력 확인")
+    print_matrix("필터 A", filter_a)
+    print_matrix("필터 B", filter_b)
+    print_matrix("패턴", pattern)
