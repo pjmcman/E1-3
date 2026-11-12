@@ -32,14 +32,14 @@ def parse_row(line, size):
     """
     tokens = line.split()
     if len(tokens) != size:
-        raise ValueError(f"숫자 {size}개가 필요합니다. (입력된 개수: {len(tokens)})")
+        raise ValueError(f"입력된 숫자 {len(tokens)}개")
 
     row = []
     for token in tokens:
         try:
             row.append(float(token))
         except ValueError:
-            raise ValueError(f"'{token}'은(는) 숫자가 아닙니다.") from None
+            raise ValueError(f"'{token}'은(는) 숫자가 아님") from None
     return row
 
 
@@ -55,7 +55,10 @@ def input_matrix(name, size=3):
         try:
             matrix.append(parse_row(line, size))
         except ValueError as error:
-            print(f"  입력 오류: {error} {len(matrix) + 1}행을 다시 입력하세요.")
+            print(
+                f"  입력 형식 오류: 각 줄에 {size}개의 숫자를 공백으로 구분해 입력하세요. "
+                f"({error}) {len(matrix) + 1}행을 다시 입력하세요."
+            )
     return matrix
 
 
@@ -67,12 +70,14 @@ def print_matrix(name, matrix):
 
 
 if __name__ == "__main__":
-    # 3단계 확인용: 필터 A, 필터 B, 패턴을 입력받아 그대로 출력해 본다.
+    # 3단계 확인용 - 미션 실행 흐름: 필터 A, B 입력 → 저장 확인 → 패턴 입력
     filter_a = input_matrix("필터 A")
     filter_b = input_matrix("필터 B")
-    pattern = input_matrix("패턴")
 
-    print("\n입력 확인")
+    print("\n필터 저장 확인")
     print_matrix("필터 A", filter_a)
     print_matrix("필터 B", filter_b)
+
+    pattern = input_matrix("패턴")
+    print("\n패턴 저장 확인")
     print_matrix("패턴", pattern)
