@@ -20,6 +20,13 @@ LABEL_ALIASES = {
     "x": "X",
 }
 
+# 모드 2 성능표에 비교용으로 넣는 3×3 기준 행렬 (모드 1과 같은 크기)
+BASELINE_3X3 = [
+    [0.0, 1.0, 0.0],
+    [1.0, 1.0, 1.0],
+    [0.0, 1.0, 0.0],
+]
+
 
 def mac(pattern, filter_):
     """같은 크기의 2차원 리스트 두 개를 MAC(Multiply-Accumulate) 연산한다.
@@ -286,9 +293,50 @@ def run_json_mode():
         print(f"⚠ {warning} (건너뜀)")
 
     print_section(2, "패턴 분석 (라벨 정규화 적용)")
+    outcomes = []
     for case in cases:
         outcome = evaluate_case(case, filters)
         print_case_result(case, outcome)
+        outcomes.append(outcome)
+
+    print_section(3, f"성능 분석 (평균/{REPEAT}회)")
+    print_performance_table(measure_by_size(cases, outcomes, filters))
+
+    print_section(4, "결과 요약")
+    print_summary(cases, outcomes)
+
+
+def measure_by_size(cases, outcomes, filters):
+    """크기별 MAC 1회 평균 시간(ms)을 재서 (N, 평균 ms) 목록을 돌려준다.
+
+    - 3×3은 기준값으로 BASELINE_3X3끼리 MAC 연산해 잰다.
+    - 나머지 크기는 점수 계산에 성공한 케이스만 Cross/X 필터로 각각 재고 평균을 낸다.
+      (크기 불일치나 필터 누락으로 연산하지 못한 케이스는 제외)
+    """
+    times = {3: [measure_mac_ms(BASELINE_3X3, BASELINE_3X3)]}
+    for case, outcome in zip(cases, outcomes):
+        if outcome["score_cross"] is None:
+            continue
+        group = filters[case["size"]]
+        times.setdefault(case["size"], []).extend([
+            measure_mac_ms(case["input"], group["Cross"]),
+            measure_mac_ms(case["input"], group["X"]),
+        ])
+    return [(size, sum(values) / len(values)) for size, values in sorted(times.items())]
+
+
+def print_summary(cases, outcomes):
+    """전체/통과/실패 개수와 실패 케이스 목록을 출력한다."""
+    passed = sum(1 for outcome in outcomes if outcome["passed"])
+    failed = len(outcomes) - passed
+    print(f"총 테스트: {len(outcomes)}개")
+    print(f"통과: {passed}개")
+    print(f"실패: {failed}개")
+    if failed:
+        print("\n실패 케이스:")
+        for case, outcome in zip(cases, outcomes):
+            if not outcome["passed"]:
+                print(f"- {case['name']}: {outcome['reason']}")
 
 
 def choose_mode():
