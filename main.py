@@ -1,5 +1,6 @@
 """Mini NPU 시뮬레이터 - MAC 연산으로 Cross/X 패턴을 판정한다."""
 
+import json
 import time
 
 # 두 점수의 차이가 이 값보다 작으면 동점으로 본다 (부동소수점 오차 대비).
@@ -7,6 +8,17 @@ EPSILON = 1e-9
 
 # 성능 측정 시 MAC 연산을 반복하는 횟수
 REPEAT = 10
+
+# 모드 2에서 읽을 데이터 파일
+DATA_FILE = "data.json"
+
+# 여러 표기의 라벨을 표준 라벨("Cross", "X")로 맞추는 표
+# (소문자로 바꾼 뒤 찾으므로 "CROSS", "Cross", "X"도 처리된다)
+LABEL_ALIASES = {
+    "+": "Cross",
+    "cross": "Cross",
+    "x": "X",
+}
 
 
 def mac(pattern, filter_):
@@ -151,9 +163,87 @@ def run_user_mode():
     print_performance_table([(3, avg_ms)])
 
 
+def normalize_label(raw):
+    """'+', 'cross', 'x' 같은 라벨을 표준 라벨 'Cross' 또는 'X'로 바꾼다.
+
+    알 수 없는 라벨이면 ValueError를 발생시킨다.
+    """
+    key = str(raw).strip().lower()
+    if key not in LABEL_ALIASES:
+        raise ValueError(f"알 수 없는 라벨: {raw!r}")
+    return LABEL_ALIASES[key]
+
+
+def parse_size(key):
+    """'size_5' 또는 'size_5_1' 형태의 키에서 크기 N(정수)을 꺼낸다."""
+    parts = key.split("_")
+    if len(parts) < 2 or parts[0] != "size" or not parts[1].isdigit():
+        raise ValueError(f"키 형식이 'size_N'이 아님: {key!r}")
+    return int(parts[1])
+
+
+def load_data(path=DATA_FILE):
+    """data.json을 읽어 (필터, 케이스 목록, 경고 목록)을 돌려준다.
+
+    - 필터: {N: {"Cross": 행렬, "X": 행렬}}  (라벨은 표준 라벨로 정규화)
+    - 케이스: [{"name", "size", "input", "expected"}, ...]  (expected도 정규화)
+    - 경고: 읽다가 건너뛴 항목의 이유 문자열 목록
+
+    파일이 없거나 JSON 형식이 아니면 OSError / json.JSONDecodeError가 그대로 올라간다.
+    """
+    with open(path, encoding="utf-8") as file:
+        data = json.load(file)
+
+    warnings = []
+
+    filters = {}
+    for key, group in data.get("filters", {}).items():
+        try:
+            size = parse_size(key)
+            filters[size] = {normalize_label(label): matrix for label, matrix in group.items()}
+        except (ValueError, AttributeError) as error:
+            warnings.append(f"필터 {key}: {error}")
+
+    cases = []
+    for name, case in data.get("patterns", {}).items():
+        try:
+            cases.append({
+                "name": name,
+                "size": parse_size(name),
+                "input": case["input"],
+                "expected": normalize_label(case["expected"]),
+            })
+        except (ValueError, KeyError, TypeError) as error:
+            warnings.append(f"패턴 {name}: {error}")
+
+    return filters, cases, warnings
+
+
 def run_json_mode():
-    """모드 2: data.json 분석 (5단계부터 구현 예정)."""
-    print("\ndata.json 분석 모드는 아직 준비 중입니다.")
+    """모드 2: data.json의 필터와 패턴을 읽고 라벨을 정규화한다.
+
+    케이스별 판정은 6단계에서 추가한다.
+    """
+    print_section(1, "필터 로드")
+    try:
+        filters, cases, warnings = load_data()
+    except OSError as error:
+        print(f"{DATA_FILE} 파일을 열 수 없습니다: {error}")
+        return
+    except json.JSONDecodeError as error:
+        print(f"{DATA_FILE}이(가) 올바른 JSON 형식이 아닙니다: {error}")
+        return
+
+    for size in sorted(filters):
+        labels = ", ".join(sorted(filters[size]))
+        print(f"✓ size_{size} 필터 로드 완료 ({labels})")
+    for warning in warnings:
+        print(f"⚠ {warning} (건너뜀)")
+
+    print_section(2, "패턴 목록 (라벨 정규화)")
+    for case in cases:
+        print(f"{case['name']:<12} {case['size']:>2}x{case['size']:<3} expected: {case['expected']}")
+    print(f"\n총 {len(cases)}개 패턴을 읽었습니다.")
 
 
 def choose_mode():
