@@ -219,11 +219,56 @@ def load_data(path=DATA_FILE):
     return filters, cases, warnings
 
 
-def run_json_mode():
-    """모드 2: data.json의 필터와 패턴을 읽고 라벨을 정규화한다.
+def evaluate_case(case, filters):
+    """케이스 하나를 같은 크기의 Cross/X 필터와 MAC 연산해 판정한다.
 
-    케이스별 판정은 6단계에서 추가한다.
+    결과 딕셔너리: score_cross, score_x, result, passed, reason
+    - 해당 크기 필터가 없거나 패턴과 필터 크기가 다르면 점수 없이 FAIL로 처리한다.
+    - 두 점수가 동점(|차이| < EPSILON)이면 'UNDECIDED'로 판정하고 FAIL로 본다.
     """
+    outcome = {"score_cross": None, "score_x": None, "result": None,
+               "passed": False, "reason": ""}
+
+    group = filters.get(case["size"])
+    if group is None or "Cross" not in group or "X" not in group:
+        outcome["reason"] = f"size_{case['size']} 필터(Cross, X)가 없음"
+        return outcome
+
+    try:
+        score_cross = mac(case["input"], group["Cross"])
+        score_x = mac(case["input"], group["X"])
+    except (ValueError, TypeError, IndexError) as error:
+        outcome["reason"] = f"크기 불일치 - {error}"
+        return outcome
+
+    result = judge(score_cross, score_x, "Cross", "X", "UNDECIDED")
+    outcome.update(score_cross=score_cross, score_x=score_x, result=result,
+                   passed=(result == case["expected"]))
+    if result == "UNDECIDED":
+        outcome["reason"] = "동점: |Cross-X| < 1e-9"
+    elif not outcome["passed"]:
+        outcome["reason"] = f"판정 {result} ≠ 기대 {case['expected']}"
+    return outcome
+
+
+def print_case_result(case, outcome):
+    """케이스 하나의 판정 결과를 출력한다."""
+    print(f"\n--- {case['name']} ({case['size']}x{case['size']}) ---")
+    if outcome["score_cross"] is not None:
+        print(f"Cross 점수: {outcome['score_cross']}")
+        print(f"X 점수: {outcome['score_x']}")
+        print(f"판정: {outcome['result']} | expected: {case['expected']}")
+    else:
+        print(f"expected: {case['expected']}")
+    status = "PASS" if outcome["passed"] else "FAIL"
+    if outcome["reason"]:
+        print(f"결과: {status} ({outcome['reason']})")
+    else:
+        print(f"결과: {status}")
+
+
+def run_json_mode():
+    """모드 2: data.json의 필터와 패턴을 읽어 케이스별로 판정한다."""
     print_section(1, "필터 로드")
     try:
         filters, cases, warnings = load_data()
@@ -240,10 +285,10 @@ def run_json_mode():
     for warning in warnings:
         print(f"⚠ {warning} (건너뜀)")
 
-    print_section(2, "패턴 목록 (라벨 정규화)")
+    print_section(2, "패턴 분석 (라벨 정규화 적용)")
     for case in cases:
-        print(f"{case['name']:<12} {case['size']:>2}x{case['size']:<3} expected: {case['expected']}")
-    print(f"\n총 {len(cases)}개 패턴을 읽었습니다.")
+        outcome = evaluate_case(case, filters)
+        print_case_result(case, outcome)
 
 
 def choose_mode():
