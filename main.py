@@ -27,6 +27,9 @@ BASELINE_3X3 = [
     [0.0, 1.0, 0.0],
 ]
 
+# 보너스 모드에서 패턴을 생성해 시험할 크기 목록 (3 이상의 홀수)
+BONUS_SIZES = [3, 5, 13, 25, 51, 101]
+
 
 def mac(pattern, filter_):
     """같은 크기의 2차원 리스트 두 개를 MAC(Multiply-Accumulate) 연산한다.
@@ -339,25 +342,75 @@ def print_summary(cases, outcomes):
                 print(f"- {case['name']}: {outcome['reason']}")
 
 
+def generate_pattern(kind, size, value=1.0):
+    """size×size 크기의 Cross(+) 또는 X 모양 행렬을 만든다.
+
+    - Cross: 가운데 행과 가운데 열이 value, 나머지는 0
+    - X: 두 대각선(i == j, i + j == size - 1)이 value, 나머지는 0
+    가운데 칸이 있어야 모양이 대칭이 되므로 size는 3 이상의 홀수만 받는다.
+    """
+    if size < 3 or size % 2 == 0:
+        raise ValueError(f"크기는 3 이상의 홀수여야 합니다: {size}")
+    label = normalize_label(kind)
+    center = size // 2
+
+    matrix = []
+    for i in range(size):
+        row = []
+        for j in range(size):
+            if label == "Cross":
+                on = i == center or j == center
+            else:
+                on = i == j or i + j == size - 1
+            row.append(value if on else 0.0)
+        matrix.append(row)
+    return matrix
+
+
+def run_bonus_mode():
+    """모드 3(보너스): 패턴 생성기로 만든 패턴을 판정해 생성기를 검증한다."""
+    print_section(1, "패턴 생성기 예시 (5x5)")
+    print_matrix("Cross", generate_pattern("Cross", 5))
+    print_matrix("X", generate_pattern("X", 5))
+
+    print_section(2, "생성 패턴 판정 확인")
+    print("크기      패턴    Cross 점수    X 점수    판정    결과")
+    print("-" * 56)
+    for size in BONUS_SIZES:
+        filters = {label: generate_pattern(label, size) for label in ("Cross", "X")}
+        for label in ("Cross", "X"):
+            pattern = generate_pattern(label, size)
+            score_cross = mac(pattern, filters["Cross"])
+            score_x = mac(pattern, filters["X"])
+            result = judge(score_cross, score_x, "Cross", "X", "UNDECIDED")
+            status = "PASS" if result == label else "FAIL"
+            print(f"{f'{size}x{size}':<10}{label:<6}{score_cross:>12g}{score_x:>10g}"
+                  f"    {result:<8}{status}")
+
+
 def choose_mode():
-    """모드 번호를 입력받는다. 1 또는 2가 아니면 다시 입력받는다."""
+    """모드 번호를 입력받는다. 1~3이 아니면 다시 입력받는다."""
     print("\n[모드 선택]")
     print("1. 사용자 입력 (3x3)")
     print("2. data.json 분석")
+    print("3. 보너스 (패턴 생성기)")
     while True:
         choice = input("선택: ").strip()
-        if choice in ("1", "2"):
+        if choice in ("1", "2", "3"):
             return choice
-        print("1 또는 2를 입력하세요.")
+        print("1, 2, 3 중 하나를 입력하세요.")
 
 
 def main():
     print("=== Mini NPU Simulator ===")
     try:
-        if choose_mode() == "1":
+        choice = choose_mode()
+        if choice == "1":
             run_user_mode()
-        else:
+        elif choice == "2":
             run_json_mode()
+        else:
+            run_bonus_mode()
     except (EOFError, KeyboardInterrupt):
         print("\n입력이 중단되어 프로그램을 종료합니다.")
 
