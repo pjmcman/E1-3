@@ -30,6 +30,9 @@ BASELINE_3X3 = [
 # 보너스 모드에서 패턴을 생성해 시험할 크기 목록 (3 이상의 홀수)
 BONUS_SIZES = [3, 5, 13, 25, 51, 101]
 
+# 보너스 성능 비교의 반복 횟수 (작은 크기는 측정 오차가 커서 REPEAT보다 많이 반복)
+BONUS_REPEAT = 100
+
 
 def mac(pattern, filter_):
     """같은 크기의 2차원 리스트 두 개를 MAC(Multiply-Accumulate) 연산한다.
@@ -111,14 +114,38 @@ def judge(score_1, score_2, label_1, label_2, tie_label):
     return label_2
 
 
-def measure_mac_ms(pattern, filter_, repeat=REPEAT):
+def flatten(matrix):
+    """2차원 리스트를 행 순서대로 이어 붙여 1차원 리스트로 펼친다."""
+    flat = []
+    for row in matrix:
+        flat.extend(row)
+    return flat
+
+
+def mac_1d(pattern_flat, filter_flat):
+    """미리 1차원으로 펼친 두 리스트를 MAC 연산한다.
+
+    2차원 mac()과 결과는 같지만, 행마다 안쪽 리스트를 꺼내는 이중 반복 대신
+    인덱스 하나로 한 번만 반복한다. 길이가 다르면 ValueError를 발생시킨다.
+    """
+    if len(pattern_flat) != len(filter_flat):
+        raise ValueError(
+            f"길이가 다릅니다: 패턴 {len(pattern_flat)}, 필터 {len(filter_flat)}"
+        )
+    total = 0.0
+    for k in range(len(pattern_flat)):
+        total += pattern_flat[k] * filter_flat[k]
+    return total
+
+
+def measure_mac_ms(pattern, filter_, repeat=REPEAT, mac_func=mac):
     """MAC 연산을 repeat번 반복해 1회 평균 시간(ms)을 돌려준다.
 
-    입출력 시간은 빼고 mac() 호출 구간만 잰다.
+    입출력 시간은 빼고 mac_func() 호출 구간만 잰다. 기본은 2차원 mac()이다.
     """
     start = time.perf_counter()
     for _ in range(repeat):
-        mac(pattern, filter_)
+        mac_func(pattern, filter_)
     elapsed = time.perf_counter() - start
     return elapsed / repeat * 1000
 
@@ -387,13 +414,38 @@ def run_bonus_mode():
             print(f"{f'{size}x{size}':<10}{label:<6}{score_cross:>12g}{score_x:>10g}"
                   f"    {result:<8}{status}")
 
+    print_section(3, f"2차원 vs 1차원 펼치기 성능 비교 (평균/{BONUS_REPEAT}회)")
+    print_flatten_comparison()
+
+
+def print_flatten_comparison():
+    """생성한 Cross 패턴/필터로 2차원 MAC과 1차원 MAC 시간을 크기별로 비교한다.
+
+    펼치기(flatten)는 측정 전에 한 번만 해 둔다. NPU가 가중치를 연속된 메모리에
+    미리 배치해 두는 것처럼, 연산 구간에서는 MAC만 비교하기 위해서다.
+    두 방식의 점수가 같은지도 함께 확인한다.
+    """
+    print("크기          2차원(ms)    1차원(ms)    1차원/2차원   점수 일치")
+    print("-" * 62)
+    for size in BONUS_SIZES:
+        pattern = generate_pattern("Cross", size)
+        filter_ = generate_pattern("Cross", size)
+        pattern_flat = flatten(pattern)
+        filter_flat = flatten(filter_)
+
+        same = abs(mac(pattern, filter_) - mac_1d(pattern_flat, filter_flat)) < EPSILON
+        ms_2d = measure_mac_ms(pattern, filter_, BONUS_REPEAT)
+        ms_1d = measure_mac_ms(pattern_flat, filter_flat, BONUS_REPEAT, mac_1d)
+        print(f"{f'{size}x{size}':<10}{ms_2d:>13.4f}{ms_1d:>13.4f}"
+              f"{ms_1d / ms_2d:>14.2f}       {'O' if same else 'X'}")
+
 
 def choose_mode():
     """모드 번호를 입력받는다. 1~3이 아니면 다시 입력받는다."""
     print("\n[모드 선택]")
     print("1. 사용자 입력 (3x3)")
     print("2. data.json 분석")
-    print("3. 보너스 (패턴 생성기)")
+    print("3. 보너스 (패턴 생성기, 1차원 펼치기 비교)")
     while True:
         choice = input("선택: ").strip()
         if choice in ("1", "2", "3"):
